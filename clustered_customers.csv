@@ -1,0 +1,6 @@
+Customer_id,Annual_spending,Orders_count,Cluster,Customer_Type
+101,5000,2,1,Low Value Customer
+102,15000,5,0,Medium Value Customer
+103,20000,7,2,High Value Customer
+104,3000,1,1,Low Value Customer
+105,25000,8,2,High Value Customer

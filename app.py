@@ -1,4 +1,3 @@
-
 """
 =========================================================
   Customer Segmentation Intelligence Dashboard  (v2)
@@ -12,12 +11,12 @@ Run with:
     pip install streamlit pandas numpy scikit-learn plotly xlsxwriter openpyxl \
                 matplotlib reportlab python-pptx anthropic
     streamlit run app.py
- 
+
 Note: matplotlib / reportlab / python-pptx / anthropic are only needed for the
 "Reports" tab (PDF/PPTX export, AI summary). The rest of the dashboard works
 fine without them.
 """
- 
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -29,7 +28,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.metrics import silhouette_score
 import plotly.express as px
 import plotly.graph_objects as go
- 
+
 # Optional dependencies — dashboard still works if these are missing
 try:
     import matplotlib
@@ -38,7 +37,7 @@ try:
     MATPLOTLIB_OK = True
 except ImportError:
     MATPLOTLIB_OK = False
- 
+
 try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
@@ -49,20 +48,20 @@ try:
     REPORTLAB_OK = True
 except ImportError:
     REPORTLAB_OK = False
- 
+
 try:
     from pptx import Presentation
     from pptx.util import Inches, Pt
     PPTX_OK = True
 except ImportError:
     PPTX_OK = False
- 
+
 try:
     import anthropic
     ANTHROPIC_OK = True
 except ImportError:
     ANTHROPIC_OK = False
- 
+
 # =========================================================
 # PAGE CONFIG
 # =========================================================
@@ -72,33 +71,33 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
- 
+
 # =========================================================
 # PREMIUM DARK THEME CSS
 # =========================================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
- 
+
     html, body, [class*="css"]  {
         font-family: 'Poppins', sans-serif;
     }
- 
+
     .stApp {
         background: radial-gradient(circle at 10% 0%, #1a1c2e 0%, #0e0f1a 45%, #0a0b12 100%);
         color: #eaeaf0;
     }
- 
+
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #14162a 0%, #0d0e1a 100%);
         border-right: 1px solid rgba(255,255,255,0.06);
     }
- 
+
     h1, h2, h3, h4 {
         color: #f5f5ff !important;
         font-weight: 700 !important;
     }
- 
+
     .hero {
         padding: 26px 32px;
         border-radius: 20px;
@@ -119,7 +118,7 @@ st.markdown("""
         margin-top: 6px;
         font-size: 0.95rem;
     }
- 
+
     .kpi-card {
         border-radius: 18px;
         padding: 18px 20px;
@@ -142,7 +141,7 @@ st.markdown("""
         color: #ffffff;
     }
     .kpi-sub { font-size: 0.75rem; color: #7de3a3; margin-top: 4px;}
- 
+
     .badge-high {
         background: rgba(34,197,94,0.15); color:#4ade80; padding:4px 12px;
         border-radius:999px; font-weight:600; font-size:0.85rem; border:1px solid rgba(74,222,128,0.4);
@@ -159,7 +158,7 @@ st.markdown("""
         background: rgba(148,163,184,0.15); color:#94a3b8; padding:4px 12px;
         border-radius:999px; font-weight:600; font-size:0.85rem; border:1px solid rgba(148,163,184,0.4);
     }
- 
+
     .insight-box {
         background: rgba(124,58,237,0.08);
         border-left: 4px solid #a78bfa;
@@ -169,14 +168,14 @@ st.markdown("""
         font-size: 0.92rem;
         color: #dcdcf0;
     }
- 
+
     div.stButton > button {
         background: linear-gradient(90deg, #7c3aed, #38bdf8);
         color: white; border: none; border-radius: 10px; font-weight: 600;
         padding: 0.5rem 1.2rem;
     }
     div.stButton > button:hover { opacity: 0.9; }
- 
+
     .stTabs [data-baseweb="tab-list"] { gap: 6px; }
     .stTabs [data-baseweb="tab"] {
         background: rgba(255,255,255,0.04);
@@ -190,7 +189,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
- 
+
 # =========================================================
 # HELPERS
 # =========================================================
@@ -199,23 +198,23 @@ def load_data(file):
     if file.name.lower().endswith(".csv"):
         return pd.read_csv(file)
     return pd.read_excel(file)
- 
- 
+
+
 def to_excel_bytes(dataframe):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         dataframe.to_excel(writer, index=False, sheet_name="Clustered_Customers")
     return output.getvalue()
- 
- 
+
+
 BADGE_COLORS = {
     "High Value Customer": "#4ade80",
     "Medium Value Customer": "#facc15",
     "Low Value Customer": "#f87171",
     "Noise / Outlier": "#94a3b8",
 }
- 
- 
+
+
 def badge_html(customer_type):
     if customer_type == "High Value Customer":
         return "<span class='badge-high'>🟢 High Value</span>"
@@ -225,8 +224,8 @@ def badge_html(customer_type):
         return "<span class='badge-noise'>⚪ Noise / Outlier</span>"
     else:
         return "<span class='badge-low'>🔴 Low Value</span>"
- 
- 
+
+
 def assign_customer_type(sorted_cluster_index):
     """Generic Low/Medium/High labelling that works for any K, based on
     relative rank of cluster mean value (ascending). Excludes noise (-1)."""
@@ -241,8 +240,8 @@ def assign_customer_type(sorted_cluster_index):
         else:
             mapping[idx] = "High Value Customer"
     return mapping
- 
- 
+
+
 def kpi_card(label, value, sub=""):
     st.markdown(f"""
         <div class="kpi-card">
@@ -251,21 +250,21 @@ def kpi_card(label, value, sub=""):
             <div class="kpi-sub">{sub}</div>
         </div>
     """, unsafe_allow_html=True)
- 
- 
+
+
 def safe_mode(series):
     m = series.mode()
     return m.iloc[0] if not m.empty else "NA"
- 
- 
+
+
 def feature_kpi_value(dataframe, col, is_numeric):
     if is_numeric:
         return f"{dataframe[col].mean():,.1f}", "average"
     else:
         top = safe_mode(dataframe[col])
         return f"{top}", "most common"
- 
- 
+
+
 def fit_clustering(algorithm, X, k=None, eps=0.5, min_samples=5):
     """Generic fit wrapper — returns (model_or_None, labels)."""
     if algorithm == "KMeans":
@@ -281,8 +280,8 @@ def fit_clustering(algorithm, X, k=None, eps=0.5, min_samples=5):
         model = DBSCAN(eps=eps, min_samples=min_samples)
         labels = model.fit_predict(X)
     return model, labels
- 
- 
+
+
 def scan_k(algorithm, X, k_range):
     """Try each k in k_range, return list of (k, silhouette_or_None, wcss_or_None)."""
     results = []
@@ -300,74 +299,74 @@ def scan_k(algorithm, X, k_range):
                 sil = None
         results.append((k, sil, wcss_val))
     return results
- 
- 
+
+
 # =========================================================
 # HERO HEADER
 # =========================================================
 st.markdown("""
 <div class="hero">
     <h1>🛍️ Customer Segmentation Intelligence Dashboard</h1>
-    <p>Upload ANY customer data (numeric or categorical columns, any names) — pick an algorithm,
+    <p>Upload ANY customer data (numeric or categorical columns, any names) — auto-cluster with KMeans,
     auto-suggest the best K, and get deep, exportable insights on who your best customers are.</p>
 </div>
 """, unsafe_allow_html=True)
- 
+
 # =========================================================
 # SIDEBAR — UPLOAD
 # =========================================================
 st.sidebar.markdown("## 📂 Upload Data")
 uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel", type=["csv", "xlsx", "xls"])
- 
+
 if uploaded_file is None:
     st.info("👈 Upload a CSV or Excel file from the sidebar to get started.")
     st.stop()
- 
+
 df = load_data(uploaded_file)
- 
+
 # =========================================================
 # SIDEBAR — CLEANING & FEATURE SELECTION
 # =========================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🧹 Data Cleaning")
- 
+
 rows_before = df.shape[0]
 df = df.drop_duplicates()
 dup_removed = rows_before - df.shape[0]
- 
+
 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 datetime_cols = df.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns.tolist()
 categorical_cols = [c for c in df.columns if c not in numeric_cols and c not in datetime_cols]
- 
+
 usable_cols = numeric_cols + categorical_cols
 if len(usable_cols) < 2:
     st.error("Your file needs at least 2 usable columns (numeric or categorical) to run clustering.")
     st.stop()
- 
+
 default_features = [c for c in ["Annual_spending", "Orders_count"] if c in df.columns]
 if len(default_features) < 2:
     default_features = numeric_cols[:2] if len(numeric_cols) >= 2 else usable_cols[:2]
- 
+
 features = st.sidebar.multiselect(
     "Select features for clustering (numeric or categorical)",
     usable_cols,
     default=default_features
 )
- 
+
 if len(features) < 2:
     st.warning("⚠️ Please select at least 2 features to continue.")
     st.stop()
- 
+
 numeric_features = [f for f in features if f in numeric_cols]
 categorical_features = [f for f in features if f in categorical_cols]
- 
+
 high_card_warns = [f for f in categorical_features if df[f].nunique(dropna=True) > 50]
 if high_card_warns:
     st.sidebar.warning(
         f"⚠️ High-cardinality column(s): {', '.join(high_card_warns)} (50+ unique values). "
         f"Clustering still runs, but consider excluding these for cleaner segments."
     )
- 
+
 missing_filled = 0
 for f in numeric_features:
     missing_filled += df[f].isnull().sum()
@@ -376,13 +375,13 @@ for f in categorical_features:
     missing_filled += df[f].isnull().sum()
     fill_val = safe_mode(df[f]) if not df[f].dropna().empty else "Unknown"
     df[f] = df[f].fillna(fill_val).astype(str)
- 
+
 st.sidebar.success(f"✔ Removed {dup_removed} duplicate rows")
 st.sidebar.success(f"✔ Filled {int(missing_filled)} missing values (mean for numeric, mode for categorical)")
- 
+
 id_col_options = ["(row index)"] + [c for c in df.columns]
 id_col = st.sidebar.selectbox("🔍 Column to use as Customer ID / Name (for search)", id_col_options)
- 
+
 # =========================================================
 # ENCODING + SCALING (any mix of numeric/categorical)
 # =========================================================
@@ -391,58 +390,48 @@ if numeric_features:
     transformers.append(("num", StandardScaler(), numeric_features))
 if categorical_features:
     transformers.append(("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features))
- 
+
 preprocessor = ColumnTransformer(transformers)
 X_scaled = preprocessor.fit_transform(df[features])
 if hasattr(X_scaled, "toarray"):
     X_scaled = X_scaled.toarray()
- 
+
 # =========================================================
-# SIDEBAR — MODEL SETTINGS (algorithm choice + auto-K)
+# SIDEBAR — MODEL SETTINGS (KMeans only, with auto-K)
 # =========================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🔢 Model Settings")
- 
-algorithm = st.sidebar.selectbox(
-    "Clustering Algorithm",
-    ["KMeans", "Agglomerative (Hierarchical)", "Gaussian Mixture", "DBSCAN (auto cluster count)"]
-)
- 
+
+algorithm = "KMeans"
 eps, min_samples = None, None
- 
-if algorithm != "DBSCAN (auto cluster count)":
-    elbow_max_k = st.sidebar.slider("Max K to scan", 3, 12, 6)
- 
-    if "k_value" not in st.session_state:
-        st.session_state["k_value"] = 3
- 
-    if st.sidebar.button("🎯 Auto-suggest Best K"):
-        scan_results = scan_k(algorithm, X_scaled, range(2, elbow_max_k + 1))
-        valid = [(k, s) for k, s, _ in scan_results if s is not None]
-        if valid:
-            best_k, best_score = max(valid, key=lambda x: x[1])
-            st.session_state["k_value"] = best_k
-            st.sidebar.success(f"Suggested K = {best_k} (silhouette = {best_score:.3f})")
-        else:
-            st.sidebar.warning("Could not compute a suggestion for this data/algorithm.")
- 
-    st.session_state["k_value"] = min(max(st.session_state["k_value"], 2), 10)
-    k_value = st.sidebar.slider("Number of Clusters (K)", 2, 10, key="k_value")
-else:
-    elbow_max_k = 6
-    k_value = None
-    eps = st.sidebar.slider("DBSCAN: eps (neighborhood radius)", 0.1, 5.0, 0.8, 0.1)
-    min_samples = st.sidebar.slider("DBSCAN: min_samples", 2, 20, 5)
- 
+
+elbow_max_k = st.sidebar.slider("Max K to scan", 3, 12, 6)
+
+if "k_value" not in st.session_state:
+    st.session_state["k_value"] = 3
+
+if st.sidebar.button("🎯 Auto-suggest Best K"):
+    scan_results = scan_k(algorithm, X_scaled, range(2, elbow_max_k + 1))
+    valid = [(k, s) for k, s, _ in scan_results if s is not None]
+    if valid:
+        best_k, best_score = max(valid, key=lambda x: x[1])
+        st.session_state["k_value"] = best_k
+        st.sidebar.success(f"Suggested K = {best_k} (silhouette = {best_score:.3f})")
+    else:
+        st.sidebar.warning("Could not compute a suggestion for this data.")
+
+st.session_state["k_value"] = min(max(st.session_state["k_value"], 2), 10)
+k_value = st.sidebar.slider("Number of Clusters (K)", 2, 10, key="k_value")
+
 # =========================================================
 # FINAL MODEL FIT (generic across algorithms)
 # =========================================================
 final_model, clusters = fit_clustering(algorithm, X_scaled, k=k_value, eps=eps, min_samples=min_samples)
 df["Cluster"] = clusters
- 
+
 noise_present = -1 in set(clusters)
 valid_labels = [c for c in set(clusters) if c != -1]
- 
+
 try:
     if noise_present:
         mask = df["Cluster"] != -1
@@ -453,7 +442,7 @@ try:
         score = 0.0
 except Exception:
     score = 0.0
- 
+
 # Cluster summary — numeric via mean, categorical via most common value (noise excluded)
 valid_df = df[df["Cluster"] != -1]
 summary_parts = []
@@ -462,25 +451,25 @@ if numeric_features:
 if categorical_features:
     summary_parts.append(valid_df.groupby("Cluster")[categorical_features].agg(safe_mode))
 summary = pd.concat(summary_parts, axis=1) if summary_parts else pd.DataFrame(index=valid_labels)
- 
+
 if numeric_features:
     rank_feature = numeric_features[0]
     sort_basis = valid_df.groupby("Cluster")[rank_feature].mean()
 else:
     rank_feature = None
     sort_basis = valid_df["Cluster"].value_counts()
- 
+
 sorted_clusters = sort_basis.sort_values()
 customer_type_map = assign_customer_type(sorted_clusters.index)
 df["Customer_Type"] = df["Cluster"].map(customer_type_map).fillna("Noise / Outlier")
- 
+
 primary_feature = numeric_features[0] if numeric_features else features[0]
 primary_is_numeric = primary_feature in numeric_features
 secondary_feature = (numeric_features[1] if len(numeric_features) > 1
                       else (features[1] if len(features) > 1 and features[1] != primary_feature else features[0]))
 secondary_is_numeric = secondary_feature in numeric_features
- 
- 
+
+
 def predict_new_point(new_scaled_row):
     """Predict cluster for a new point, generic across algorithms."""
     if algorithm in ("KMeans", "Gaussian Mixture"):
@@ -491,8 +480,8 @@ def predict_new_point(new_scaled_row):
         return valid_labels[0] if valid_labels else -1
     dists = {c: np.linalg.norm(new_scaled_row[0] - cent) for c, cent in centroids.items()}
     return min(dists, key=dists.get)
- 
- 
+
+
 # =========================================================
 # SIDEBAR — FILTERS
 # =========================================================
@@ -502,7 +491,7 @@ type_options = ["High Value Customer", "Medium Value Customer", "Low Value Custo
 if noise_present:
     type_options.append("Noise / Outlier")
 type_filter = st.sidebar.multiselect("Customer Type", options=type_options, default=type_options)
- 
+
 range_filters = {}
 category_filters = {}
 for f in features:
@@ -514,13 +503,13 @@ for f in features:
     else:
         options = sorted(df[f].dropna().unique().tolist(), key=lambda x: str(x))
         category_filters[f] = st.sidebar.multiselect(f"{f} values", options, default=options)
- 
+
 filtered_df = df[df["Customer_Type"].isin(type_filter)].copy()
 for f, (lo, hi) in range_filters.items():
     filtered_df = filtered_df[(filtered_df[f] >= lo) & (filtered_df[f] <= hi)]
 for f, selected_vals in category_filters.items():
     filtered_df = filtered_df[filtered_df[f].isin(selected_vals)]
- 
+
 # =========================================================
 # KPI CARDS
 # =========================================================
@@ -539,9 +528,9 @@ with c4:
 with c5:
     high_pct = (df["Customer_Type"] == "High Value Customer").mean() * 100
     kpi_card("High Value %", f"{high_pct:.1f}%", "of total customers")
- 
+
 st.markdown("<br>", unsafe_allow_html=True)
- 
+
 # =========================================================
 # RULE-BASED INSIGHTS (plain text, reused by UI + PDF/PPT)
 # =========================================================
@@ -551,7 +540,7 @@ def generate_insight_lines():
     med_n = (df["Customer_Type"] == "Medium Value Customer").sum()
     low_n = (df["Customer_Type"] == "Low Value Customer").sum()
     noise_n = (df["Customer_Type"] == "Noise / Outlier").sum()
- 
+
     lines = []
     if primary_is_numeric:
         high_val = df.loc[df["Customer_Type"] == "High Value Customer", primary_feature].sum()
@@ -563,18 +552,18 @@ def generate_insight_lines():
         top_val = safe_mode(df.loc[df["Customer_Type"] == "High Value Customer", primary_feature]) if high_n else "N/A"
         lines.append(f"{high_n} customers ({high_n/total*100:.1f}%) are High Value; "
                       f"their most common {primary_feature} is {top_val}.")
- 
+
     lines.append(f"{med_n} customers ({med_n/total*100:.1f}%) are Medium Value — a strong target for upsell/cross-sell.")
     lines.append(f"{low_n} customers ({low_n/total*100:.1f}%) are Low Value — consider re-engagement or win-back offers.")
     if noise_present:
         lines.append(f"{noise_n} customers ({noise_n/total*100:.1f}%) were flagged as Noise/Outliers by DBSCAN — "
                       f"unusual behaviour worth a manual look.")
- 
+
     quality = ("a strong, well-separated segmentation." if score > 0.5 else
                "a reasonable segmentation; try adjusting K, features, or algorithm for tighter clusters." if score > 0.25 else
                "clusters overlap significantly; consider different features, K, or algorithm.")
     lines.append(f"Clustering quality (Silhouette Score) is {score:.3f} — {quality}")
- 
+
     # distinguishing features per cluster (z-score based)
     if numeric_features:
         overall_mean = df[numeric_features].mean()
@@ -588,8 +577,8 @@ def generate_insight_lines():
                                for f in top_feats])
             lines.append(f"Segment '{ctype}' (cluster {cluster_id}, n={len(cluster_rows)}): {desc}.")
     return lines
- 
- 
+
+
 # =========================================================
 # TABS
 # =========================================================
@@ -597,13 +586,13 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈 Elbow & Clusters", "🎨 Explore & Search", "👤 Predict a Customer",
     "📋 Data & Downloads", "📊 Business Insights", "📄 Reports"
 ])
- 
+
 # ---------------------------------------------------------
 # TAB 1 — ELBOW / SILHOUETTE + CLUSTER PLOT
 # ---------------------------------------------------------
 with tab1:
     col1, col2 = st.columns(2)
- 
+
     with col1:
         if algorithm == "KMeans":
             st.markdown("#### 📈 Elbow Method (WCSS)")
@@ -652,7 +641,7 @@ with tab1:
             st.metric("Noise points", f"{noise_count} ({noise_count/len(df)*100:.1f}%)")
             st.caption("DBSCAN decides the number of clusters automatically based on eps/min_samples — "
                        "tune those in the sidebar to get more or fewer clusters.")
- 
+
     with col2:
         st.markdown("#### ⭐ Silhouette Score (final model)")
         gauge = go.Figure(go.Indicator(
@@ -673,7 +662,7 @@ with tab1:
         gauge.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
                              margin=dict(l=10, r=10, t=30, b=10), height=380)
         st.plotly_chart(gauge, use_container_width=True)
- 
+
     st.markdown("#### 🎨 Interactive Cluster Plot")
     scatter_fig = px.scatter(
         df, x=primary_feature, y=secondary_feature,
@@ -688,7 +677,7 @@ with tab1:
         legend_title_text="Customer Type", height=480, margin=dict(l=10, r=10, t=30, b=10)
     )
     st.plotly_chart(scatter_fig, use_container_width=True)
- 
+
     st.markdown("#### 📋 Cluster Summary")
     display_summary = summary.copy()
     display_summary["Customer_Type"] = [customer_type_map.get(i, "Noise / Outlier") for i in display_summary.index]
@@ -697,17 +686,17 @@ with tab1:
     if noise_present:
         st.caption(f"⚪ {int((df['Cluster']==-1).sum())} points classified as Noise/Outlier by DBSCAN "
                    f"(not shown in the summary table above).")
- 
+
 # ---------------------------------------------------------
 # TAB 2 — SEARCH + EXPLORE
 # ---------------------------------------------------------
 with tab2:
     st.markdown("#### 🔍 Search Customer")
     search_term = st.text_input("Search by ID / Name / row value")
- 
+
     display_df = filtered_df.copy()
     display_df["Segment"] = display_df["Customer_Type"].apply(badge_html)
- 
+
     if search_term:
         if id_col == "(row index)":
             try:
@@ -718,25 +707,25 @@ with tab2:
             display_df = display_df[
                 display_df[id_col].astype(str).str.contains(search_term, case=False, na=False)
             ]
- 
+
     st.markdown(f"**{len(display_df)}** customer(s) found")
     st.write(display_df.drop(columns=["Segment"]).to_html(escape=False, index=False) +
              "<br>", unsafe_allow_html=True)
- 
+
     st.markdown("##### Segment Preview")
     for _, row in display_df.head(20).iterrows():
         label = row[id_col] if id_col != "(row index)" else f"Row {row.name}"
- 
+
         def fmt(val, is_num):
             return f"{val:.1f}" if is_num and isinstance(val, (int, float, np.floating)) else f"{val}"
- 
+
         st.markdown(
             f"{badge_html(row['Customer_Type'])} &nbsp; **{label}** — "
             f"{primary_feature}: {fmt(row[primary_feature], primary_is_numeric)}, "
             f"{secondary_feature}: {fmt(row[secondary_feature], secondary_is_numeric)}",
             unsafe_allow_html=True
         )
- 
+
 # ---------------------------------------------------------
 # TAB 3 — SINGLE CUSTOMER PREDICTION
 # ---------------------------------------------------------
@@ -746,7 +735,7 @@ with tab3:
     if algorithm not in ("KMeans", "Gaussian Mixture"):
         st.caption(f"ℹ️ {algorithm} has no native predict function — this uses a nearest-cluster-centroid "
                    f"approximation instead.")
- 
+
     input_cols = st.columns(len(features))
     input_vals = {}
     for i, f in enumerate(features):
@@ -756,7 +745,7 @@ with tab3:
             else:
                 options = sorted(df[f].dropna().unique().tolist(), key=lambda x: str(x))
                 input_vals[f] = st.selectbox(f, options, index=0)
- 
+
     if st.button("🔮 Predict Segment"):
         new_point = pd.DataFrame([input_vals])[features]
         new_scaled = preprocessor.transform(new_point)
@@ -764,9 +753,9 @@ with tab3:
             new_scaled = new_scaled.toarray()
         pred_cluster = predict_new_point(new_scaled)
         pred_type = customer_type_map.get(pred_cluster, "Noise / Outlier")
- 
+
         st.markdown(f"### Result: {badge_html(pred_type)}", unsafe_allow_html=True)
- 
+
         if pred_type == "High Value Customer":
             st.success("This customer belongs to your top segment — prioritize retention & loyalty offers! 🟢")
         elif pred_type == "Medium Value Customer":
@@ -775,14 +764,14 @@ with tab3:
             st.error("This customer is low value — consider engagement or win-back campaigns. 🔴")
         else:
             st.info("This customer doesn't fit cleanly into an existing segment — worth a manual review. ⚪")
- 
+
 # ---------------------------------------------------------
 # TAB 4 — DATA TABLE + DOWNLOADS
 # ---------------------------------------------------------
 with tab4:
     st.markdown("#### 📋 Filtered Cluster Data")
     st.dataframe(filtered_df, use_container_width=True, height=420)
- 
+
     dl1, dl2 = st.columns(2)
     with dl1:
         csv_bytes = filtered_df.to_csv(index=False).encode("utf-8")
@@ -793,7 +782,7 @@ with tab4:
         st.download_button("📥 Download Excel", data=excel_bytes,
                             file_name="clustered_customers.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
- 
+
 # ---------------------------------------------------------
 # TAB 5 — BUSINESS INSIGHTS (deeper)
 # ---------------------------------------------------------
@@ -802,14 +791,14 @@ with tab5:
     insight_lines = generate_insight_lines()
     for line in insight_lines:
         st.markdown(f"<div class='insight-box'>💡 {line}</div>", unsafe_allow_html=True)
- 
+
     st.markdown("##### Segment Distribution")
     pie_fig = px.pie(df, names="Customer_Type", hole=0.55,
                       color="Customer_Type", color_discrete_map=BADGE_COLORS)
     pie_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
                            margin=dict(l=10, r=10, t=10, b=10), height=380)
     st.plotly_chart(pie_fig, use_container_width=True)
- 
+
     if numeric_features:
         st.markdown("##### Average Feature Value by Segment")
         bar_fig = px.bar(
@@ -820,7 +809,7 @@ with tab5:
         bar_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                                margin=dict(l=10, r=10, t=10, b=10), height=380)
         st.plotly_chart(bar_fig, use_container_width=True)
- 
+
     if len(numeric_features) >= 2:
         st.markdown("##### 🔗 Correlation Between Numeric Features")
         corr = df[numeric_features].corr().round(2)
@@ -829,7 +818,7 @@ with tab5:
         corr_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
                                 margin=dict(l=10, r=10, t=10, b=10), height=380)
         st.plotly_chart(corr_fig, use_container_width=True)
- 
+
     st.markdown("---")
     st.markdown("##### ✨ AI Executive Summary (optional)")
     st.caption("Uses your own Anthropic API key — it's only used for this session and never stored.")
@@ -866,14 +855,14 @@ with tab5:
         if st.session_state.get("ai_summary"):
             st.markdown(f"<div class='insight-box'>🤖 {st.session_state['ai_summary']}</div>",
                         unsafe_allow_html=True)
- 
+
 # ---------------------------------------------------------
 # TAB 6 — REPORTS (PDF / PPTX export)
 # ---------------------------------------------------------
 with tab6:
     st.markdown("#### 📄 Export a Shareable Report")
     st.write("Generates a report with your KPIs, cluster summary, and insights (AI summary included if generated above).")
- 
+
     def make_pie_png():
         fig, ax = plt.subplots(figsize=(4, 4))
         counts = df["Customer_Type"].value_counts()
@@ -885,7 +874,7 @@ with tab6:
         plt.close(fig)
         buf.seek(0)
         return buf
- 
+
     def make_bar_png():
         if not numeric_features:
             return None
@@ -898,12 +887,12 @@ with tab6:
         plt.close(fig)
         buf.seek(0)
         return buf
- 
+
     insight_lines = generate_insight_lines()
     ai_summary_text = st.session_state.get("ai_summary", "")
- 
+
     col_pdf, col_ppt = st.columns(2)
- 
+
     with col_pdf:
         st.markdown("**PDF Report**")
         if not (REPORTLAB_OK and MATPLOTLIB_OK):
@@ -946,7 +935,7 @@ with tab6:
                 buf.seek(0)
                 st.download_button("⬇️ Download PDF", data=buf, file_name="segmentation_report.pdf",
                                     mime="application/pdf")
- 
+
     with col_ppt:
         st.markdown("**PowerPoint Report**")
         if not (PPTX_OK and MATPLOTLIB_OK):
@@ -955,11 +944,11 @@ with tab6:
             if st.button("📥 Build PPTX Report"):
                 prs = Presentation()
                 blank = prs.slide_layouts[6]
- 
+
                 slide = prs.slides.add_slide(prs.slide_layouts[0])
                 slide.shapes.title.text = "Customer Segmentation Report"
                 slide.placeholders[1].text = pd.Timestamp.now().strftime("%d %b %Y")
- 
+
                 slide = prs.slides.add_slide(prs.slide_layouts[1])
                 slide.shapes.title.text = "Key Metrics"
                 body = slide.placeholders[1].text_frame
@@ -968,7 +957,7 @@ with tab6:
                             f"High Value %: {(df['Customer_Type']=='High Value Customer').mean()*100:.1f}%"]:
                     p = body.add_paragraph()
                     p.text = txt
- 
+
                 slide = prs.slides.add_slide(prs.slide_layouts[1])
                 slide.shapes.title.text = "Key Insights"
                 body = slide.placeholders[1].text_frame
@@ -976,24 +965,25 @@ with tab6:
                 for line in insight_lines[1:6]:
                     p = body.add_paragraph()
                     p.text = line
- 
+
                 if ai_summary_text:
                     slide = prs.slides.add_slide(prs.slide_layouts[1])
                     slide.shapes.title.text = "AI Executive Summary"
                     slide.placeholders[1].text_frame.text = ai_summary_text
- 
+
                 slide = prs.slides.add_slide(blank)
                 slide.shapes.add_picture(make_pie_png(), Inches(2), Inches(1), height=Inches(5))
- 
+
                 bar_png = make_bar_png()
                 if bar_png:
                     slide = prs.slides.add_slide(blank)
                     slide.shapes.add_picture(bar_png, Inches(1), Inches(1), width=Inches(8))
- 
+
                 buf = BytesIO()
                 prs.save(buf)
                 buf.seek(0)
                 st.download_button("⬇️ Download PPTX", data=buf, file_name="segmentation_report.pptx",
                                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
- 
+
 st.markdown("<br><center style='color:#5f6180; font-size:0.8rem;'>Built with ❤️ using Streamlit • Multi-Algorithm Customer Segmentation</center>", unsafe_allow_html=True)
+
